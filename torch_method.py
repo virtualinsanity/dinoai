@@ -47,7 +47,7 @@ class DinoNet(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        return self.out(x)
+        return torch.clamp(self.out(x), -200, 200)
 
 class TorchMethod(Method):
     def __init__(self):
@@ -58,7 +58,7 @@ class TorchMethod(Method):
         self.epsilon = 1.0
         self.load_best_model()
         self.memory = deque(maxlen=10000)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
         self.last_x = None
         self.num_obstacle = 0
         self.last_score = 0
@@ -85,7 +85,9 @@ class TorchMethod(Method):
                 return random.randint(0, 2) # otherwise all moves are valid
         with torch.no_grad(): #return a move from the Neural Network
             computed_state_tensor = self.model(torch.FloatTensor(get_state(input_state)))
-            return torch.argmax(computed_state_tensor).item()  # Returns the action with the biggest reward
+            move = torch.argmax(computed_state_tensor).item()  # Returns the action with the biggest reward
+            print(f"Current state {computed_state_tensor} move {move}")
+            return move
 
     def set_reward(self, input_state, action_taken, crashed, is_jumping, is_docking):
         self.memory.append((
@@ -116,7 +118,9 @@ class TorchMethod(Method):
         for index, (state, action_taken, is_jumping, is_docking) in list_memory:
             state_tensor = torch.FloatTensor(state)
             if crashed:
-                target = -100
+                if index >= 5:
+                    break
+                target = -100 * (0.9 ** index)
             else:
                 if index == last_move_index:
                     # This was the critical move — high reward
@@ -126,11 +130,11 @@ class TorchMethod(Method):
                     target = -10
                 else:
                     # No reward/punishment for neutral actions
-                    continue
+                    break
             predicted = self.model(state_tensor)[action_taken].unsqueeze(0)
             target_tensor = torch.tensor([target], dtype=predicted.dtype, device=predicted.device)
             # Compute the loss
-            loss = F.mse_loss(predicted, target_tensor)
+            loss = F.smooth_l1_loss(predicted, target_tensor)
 
             # Optimize the model
             self.optimizer.zero_grad()

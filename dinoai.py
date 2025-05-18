@@ -27,7 +27,7 @@ def run(playwright_passed: Playwright):
     i = 1
     is_jumping, is_docking = False, False
     while i < 6000000:
-        reset_state(is_jumping, is_docking, page)
+        is_jumping, is_docking = reset_state(is_jumping, is_docking, page)
         if i%10 == 0: # reload the page after few attempts cause of a bug in the game
             page.reload()
             page.wait_for_selector('div#messageBox')  # waits for the page to load
@@ -55,10 +55,17 @@ def run(playwright_passed: Playwright):
                 is_jumping = obstacle["j"]
                 is_docking = obstacle["d"]
                 current_action = method.get_move(obstacle, is_jumping, is_docking)
+                print(f"selected action {current_action}")
                 if current_action == 1:
-                    page.keyboard.down("Space")
+                    if is_docking:
+                        page.keyboard.up("ArrowDown")
+                    if not is_jumping:
+                        page.keyboard.down("Space")
                 elif current_action == 2:
-                    page.keyboard.down("ArrowDown")
+                    if is_jumping:
+                        page.keyboard.up("Space")
+                    if not is_docking:
+                        page.keyboard.down("ArrowDown")
                 else:
                     reset_state(is_jumping, is_docking, page)
                 crashed = page.evaluate('Runner.instance_.crashed')
